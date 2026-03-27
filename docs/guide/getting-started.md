@@ -31,5 +31,5 @@ sorted.forEach((r) => console.log(`${r.owner}/${r.name} ⭐ ${r.stars}`));
 
 ## Requirements
 
-- **Node.js** 20 or later
+- **Node.js** 24 or later
 - **TypeScript** 5.0 or later (for type definitions)

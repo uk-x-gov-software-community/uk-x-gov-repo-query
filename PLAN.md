@@ -7,31 +7,43 @@ Build a natural language query interface on top of the
 data. Users will be able to ask questions in plain English and receive filtered,
 ranked results from the nightly-updated repos dataset.
 
-**Data source:** `https://uk-x-gov-software-community.github.io/xgov-opensource-repo-scraper/repos.json`
+**Data sources** (all served from GitHub Pages, updated nightly):
+
+| URL | Contents |
+|---|---|
+| `.../repos.json` | Array of repo metadata objects, includes a `sbomPath` field per repo where an SBOM is available |
+| `.../sbom/{org}/{repo}.json.gz` | Per-repo SBOM in compressed SPDX JSON — full dependency tree with versions and licences |
+| `.../sbom.json` | Consolidated SBOM for all repos in CycloneDX format |
+
+The SBOM data is generated from GitHub's dependency graph API, giving accurate library-level dependency information across all supported ecosystems (npm, PyPI, Maven, Go modules, etc.).
 
 ---
 
 ## Architecture
 
 ```
-repos.json (remote, nightly)
-       │
-       ▼
-┌─────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  Data Layer │────▶│  Query Engine    │────▶│  Output      │
-│  (fetch +   │     │  (NL parser +    │     │  (formatted  │
-│   cache)    │     │   filter/sort)   │     │   results)   │
-└─────────────┘     └──────────────────┘     └──────────────┘
+repos.json          sbom/{org}/{repo}.json.gz
+(nightly)           (nightly, lazy-loaded per repo)
+     │                          │
+     └──────────┬───────────────┘
+                ▼
+     ┌─────────────────┐     ┌──────────────────┐     ┌──────────────┐
+     │   Data Layer    │────▶│  Query Engine    │────▶│  Output      │
+     │ (fetch, enrich, │     │  (NL parser +    │     │  (formatted  │
+     │  cache, index)  │     │   filter/sort)   │     │   results)   │
+     └─────────────────┘     └──────────────────┘     └──────────────┘
 ```
 
 ### Layers
 
-1. **Data layer** — fetches `repos.json`, validates the shape, and caches it
-   in memory (TTL: 1 hour). Exposes a typed `Repo[]` array to the rest of the
-   system.
+1. **Data layer** — fetches `repos.json`, enriches each record with
+   department (via org mapping) and dependencies (from SBOM), validates the
+   shape, and caches in memory (TTL: 1 hour). SBOM files are fetched lazily
+   and cached separately — only loaded when a dependency filter is active.
+   Exposes a typed `Repo[]` array to the rest of the system.
 
 2. **Query engine** — parses a plain English query string into a structured
-   `QueryFilter`, then applies it to the repo list.
+   `QueryFilter`, then applies it to the enriched repo list.
 
 3. **Output layer** — formats results as JSON (library consumers) or a
    human-readable table (CLI).
@@ -60,7 +72,8 @@ interface Repo {
 
   // new fields (populated from scraper or derived)
   department: string | null;   // mapped from owner via org→department lookup
-  dependencies: string[];      // library names parsed from package.json / requirements.txt etc.
+  sbomPath: string | null;     // path to compressed SPDX SBOM, as provided by repos.json
+  dependencies: string[];      // package names extracted from the repo's SBOM (lazy-loaded)
 }
 ```
 
@@ -123,10 +136,13 @@ interface QueryFilter {
 - Static mapping from GitHub org slug → department name
 - Ships with a `data/org-to-department.json` seed file
 
-### `src/data/dependencies.ts`
-- `parseDependencies(repo: RawRepo): string[]`
-- If the scraper exposes manifest data, parse it here
-- Fallback: derive from topics (e.g. topic `react`, `django`, `rails`)
+### `src/data/sbom.ts`
+- `fetchDependencies(sbomPath: string): Promise<string[]>`
+- Fetches the gzip-compressed SPDX JSON file for a single repo
+- Decompresses and extracts the `packages[].name` array (these are the library names)
+- Caches result in memory keyed by `sbomPath` (TTL: 1 hour, same as repos)
+- Returns `[]` if no SBOM is available for the repo
+- Falls back to repo `topics` array when no SBOM path is present
 
 ### `src/nlp/parser.ts`
 - `parseQuery(query: string): QueryFilter`
@@ -155,21 +171,28 @@ interface QueryFilter {
 
 ## Dependency and Library Filtering
 
-Detecting libraries used requires at least one of:
+The scraper publishes per-repo SBOMs as compressed SPDX JSON files at
+predictable URLs (`/sbom/{org}/{repo}.json.gz`). `repos.json` includes a
+`sbomPath` field pointing to the file for each repo where one is available.
 
-1. **Scraper provides manifest data** — if `repos.json` includes a
-   `dependencies` or `packageJson` field, use it directly. (To be confirmed
-   once we inspect the live JSON.)
+### Resolution strategy (in priority order)
 
-2. **Topic-based fallback** — many gov repos tag topics like `react`, `rails`,
-   `django`. We treat these as a proxy for library use when no manifest data is
-   available.
+1. **SBOM (primary)** — fetch the repo's SPDX SBOM, decompress it, extract
+   `packages[].name`. This gives the full dependency tree including transitive
+   deps, version numbers, and licence info. Coverage is limited to repos where
+   GitHub's dependency graph is enabled.
 
-3. **Future: on-demand manifest fetch** — for a named repo, fetch
-   `package.json` / `requirements.txt` / `go.mod` from GitHub and cache the
-   result. Opt-in only (rate-limit aware).
+2. **Topic fallback** — for repos without an SBOM, treat GitHub topics as a
+   coarse proxy (e.g. topic `react`, `django`, `rails`). Clearly less accurate
+   but universally available.
 
-The initial implementation uses approaches 1 and 2. Approach 3 is deferred.
+### Performance
+
+SBOM files are only fetched when a `dependencies` filter is active. They are
+cached in memory for 1 hour. A dependency-filtered query will fan out SBOM
+fetches concurrently (capped at 10 parallel requests) before applying the
+filter, so the first query with a dependency filter may have higher latency.
+Subsequent queries use the cache.
 
 ---
 
@@ -179,7 +202,8 @@ The initial implementation uses approaches 1 and 2. Approach 3 is deferred.
 - Unit tests for `parseQuery` covering combined queries
 - Unit tests for `queryRepos` with the new `department` and `dependencies` fields
 - Unit test for `resolveDepartment` mapping
-- Integration test that fetches a mock `repos.json` and runs an end-to-end query
+- Unit tests for SBOM fetch and SPDX package name extraction with mock gzip responses
+- Integration test that fetches a mock `repos.json` + mock SBOM and runs an end-to-end query
 - All tests continue to use Vitest (already scaffolded)
 
 ---
@@ -195,7 +219,7 @@ src/
   data/
     fetch.ts
     departments.ts
-    dependencies.ts
+    sbom.ts
   nlp/
     parser.ts
     rules.ts
@@ -203,6 +227,7 @@ src/
     query.test.ts
     parser.test.ts
     departments.test.ts
+    sbom.test.ts
 data/
   org-to-department.json
 ```
@@ -213,8 +238,8 @@ data/
 
 - **LLM integration** — optionally pass the query through a small LLM to handle
   ambiguous or complex phrasing before the rule-based parser.
-- **On-demand manifest fetching** — fetch live `package.json` / `requirements.txt`
-  for richer dependency data.
+- **Licence filtering** — SBOMs include licence info per package; expose this as a filter.
+- **Transitive dependency depth** — distinguish direct vs transitive deps in filter results.
 - **Web UI** — a VitePress or lightweight HTML front-end over the query API.
 - **Result ranking** — score results by relevance (star count, recency,
   match quality) rather than returning all matches equally.

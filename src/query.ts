@@ -34,6 +34,21 @@ export function queryRepos(repos: Repo[], filter: QueryFilter): QueryResult {
       return false;
     }
 
+    if (filter.department !== undefined) {
+      const term = filter.department.toLowerCase();
+      const deptMatch = repo.department?.toLowerCase().includes(term) ?? false;
+      const ownerMatch = repo.owner.toLowerCase().includes(term);
+      if (!deptMatch && !ownerMatch) return false;
+    }
+
+    if (filter.dependencies !== undefined && filter.dependencies.length > 0) {
+      const repoDeps = repo.dependencies.map((d) => d.toLowerCase());
+      const allMatch = filter.dependencies.every((d) =>
+        repoDeps.includes(d.toLowerCase()),
+      );
+      if (!allMatch) return false;
+    }
+
     return true;
   });
 

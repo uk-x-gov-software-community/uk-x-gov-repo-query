@@ -10,6 +10,12 @@ export interface Repo {
   isArchived: boolean;
   lastPushedAt: string;
   url: string;
+  /** Human-readable department name, resolved from the owner org slug. */
+  department: string | null;
+  /** URL to the repo's compressed SPDX SBOM, when available. */
+  sbomPath: string | null;
+  /** Package names from the repo's SBOM, or topics when no SBOM is available. */
+  dependencies: string[];
 }
 
 /** Criteria used to filter a list of repositories. */
@@ -24,6 +30,10 @@ export interface QueryFilter {
   activeOnly?: boolean;
   /** Return repos with at least this many stars. */
   minStars?: number;
+  /** Match repos belonging to this department (case-insensitive substring). */
+  department?: string;
+  /** Match repos that have all of these dependencies (case-insensitive). */
+  dependencies?: string[];
 }
 
 /** The result of a query operation. */

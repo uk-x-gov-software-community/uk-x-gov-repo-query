@@ -1,0 +1,56 @@
+/** Map of GitHub organisation slug → human-readable department name. */
+export const ORG_TO_DEPARTMENT: Readonly<Record<string, string>> = {
+  alphagov: "Government Digital Service",
+  "co-cddo": "Central Digital and Data Office",
+  "co-digital": "Cabinet Office",
+  cabinetoffice: "Cabinet Office",
+  "DFE-Digital": "Department for Education",
+  "dfe-digital": "Department for Education",
+  UKHomeOffice: "Home Office",
+  ukhomeoffice: "Home Office",
+  ministryofjustice: "Ministry of Justice",
+  "moj-analytical-services": "Ministry of Justice",
+  "moj-digital-services": "Ministry of Justice",
+  HMRC: "HM Revenue and Customs",
+  hmrc: "HM Revenue and Customs",
+  hmcts: "HM Courts and Tribunals Service",
+  HMCTS: "HM Courts and Tribunals Service",
+  nhsdigital: "NHS England",
+  NHSDigital: "NHS England",
+  nhsuk: "NHS",
+  nhsbsa: "NHS Business Services Authority",
+  NHSbsa: "NHS Business Services Authority",
+  nhsx: "NHSX",
+  ONSdigital: "Office for National Statistics",
+  onsdigital: "Office for National Statistics",
+  defra: "Department for Environment Food and Rural Affairs",
+  "DEFRA-digital": "Department for Environment Food and Rural Affairs",
+  dwpdigital: "Department for Work and Pensions",
+  "DWP-Digital": "Department for Work and Pensions",
+  "fcdo-digital": "Foreign Commonwealth and Development Office",
+  fcdo: "Foreign Commonwealth and Development Office",
+  dvla: "Driver and Vehicle Licensing Agency",
+  DVLA: "Driver and Vehicle Licensing Agency",
+  dvsa: "Driver and Vehicle Standards Agency",
+  DVSA: "Driver and Vehicle Standards Agency",
+  dstl: "Defence Science and Technology Laboratory",
+  DSTL: "Defence Science and Technology Laboratory",
+  gchq: "GCHQ",
+  GCHQ: "GCHQ",
+  communitiesuk: "Department for Levelling Up Housing and Communities",
+  "mhclg-digital": "Ministry of Housing Communities and Local Government",
+  "ukhsa-data-science": "UK Health Security Agency",
+  publichealthengland: "Public Health England",
+  "digital-land": "Department for Levelling Up Housing and Communities",
+  "nice-digital": "National Institute for Health and Care Excellence",
+  companieshouse: "Companies House",
+  CompaniesHouse: "Companies House",
+};
+
+/**
+ * Resolve a GitHub organisation slug to its human-readable department name.
+ * Returns null when the org is not in the known mapping.
+ */
+export function resolveDepartment(owner: string): string | null {
+  return ORG_TO_DEPARTMENT[owner] ?? null;
+}

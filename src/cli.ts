@@ -2,27 +2,78 @@
 
 import { fetchRepos } from "./data/fetch.js";
 import { enrichReposWithDependencies } from "./data/sbom.js";
+import { extractFilterWithLlm, isEmptyFilter, type LlmProviderName } from "./nlp/llm.js";
 import { parseQuery } from "./nlp/parser.js";
 import { queryRepos, sortByStars } from "./query.js";
 
-const query = process.argv[2] ?? "";
+// ---------------------------------------------------------------------------
+// Argument parsing
+// ---------------------------------------------------------------------------
+
+const args = process.argv.slice(2);
+let query = "";
+let llmProvider: LlmProviderName | undefined;
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]!;
+  if (arg === "--llm" && i + 1 < args.length) {
+    const val = args[++i];
+    if (val === "copilot" || val === "claude") {
+      llmProvider = val;
+    } else {
+      console.error(`Unknown --llm provider "${val}". Use "copilot" or "claude".`);
+      process.exit(1);
+    }
+  } else if (!arg.startsWith("--")) {
+    query = arg;
+  }
+}
 
 if (query === "" || query === "--help" || query === "-h") {
   console.log(`uk-x-gov-repo-query — search UK government open source repositories
 
 Usage:
-  node dist/cli.js "<query>"
+  node dist/cli.js "<query>" [--llm copilot|claude]
+
+Options:
+  --llm copilot   Fall back to GitHub Copilot (requires @github/copilot-sdk)
+  --llm claude    Fall back to Claude AI (requires @anthropic-ai/sdk + ANTHROPIC_API_KEY)
+
+The rule-based parser runs first. The LLM is only called when the parser
+does not recognise any criteria in the query.
 
 Examples:
   node dist/cli.js "Python repos from HMRC"
-  node dist/cli.js "active TypeScript repos from GDS"
-  node dist/cli.js "repos using react with more than 100 stars"
-  node dist/cli.js "written in Ruby by Home Office"
-  node dist/cli.js "repos that use django built with python"`);
+  node dist/cli.js "active TypeScript repos from GDS with more than 100 stars"
+  node dist/cli.js "repos using react built with webpack"
+  node dist/cli.js "show me what the tax office builds" --llm claude
+  node dist/cli.js "repos from the driving licence people" --llm copilot`);
   process.exit(query === "" ? 1 : 0);
 }
 
-const filter = parseQuery(query);
+// ---------------------------------------------------------------------------
+// Parse query — rule-based first, LLM fallback if nothing was recognised
+// ---------------------------------------------------------------------------
+
+let filter = parseQuery(query);
+
+if (isEmptyFilter(filter) && llmProvider !== undefined) {
+  process.stderr.write(
+    `Rule parser found no criteria — falling back to ${llmProvider} LLM…\n`,
+  );
+  try {
+    filter = await extractFilterWithLlm(query, llmProvider);
+  } catch (err) {
+    console.error(
+      `LLM fallback failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch, enrich, filter, output
+// ---------------------------------------------------------------------------
 
 process.stderr.write("Fetching repos…\n");
 let repos = await fetchRepos();

@@ -1,0 +1,45 @@
+name: Lint Fix
+
+on:
+  pull_request:
+    branches: [main]
+
+# Only one lint-fix run at a time per PR to avoid conflicting commits.
+concurrency:
+  group: lint-fix-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-fix:
+    name: Auto-fix lint and formatting
+    runs-on: ubuntu-latest
+    # Avoid running on PRs from forks – they lack write permission.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the PR branch so we can push fixes back to it.
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply lint and format fixes
+        run: npm run lint:fix
+
+      - name: Commit fixes (if any)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: apply biome lint/format fixes"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"

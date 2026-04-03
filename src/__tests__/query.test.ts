@@ -14,6 +14,9 @@ const REPOS: Repo[] = [
     isArchived: false,
     lastPushedAt: "2024-01-10T00:00:00Z",
     url: "https://github.com/alphagov/govuk-frontend",
+    department: "Government Digital Service",
+    sbomPath: null,
+    dependencies: ["nunjucks", "sass"],
   },
   {
     name: "govuk-design-system",
@@ -26,6 +29,9 @@ const REPOS: Repo[] = [
     isArchived: false,
     lastPushedAt: "2024-01-05T00:00:00Z",
     url: "https://github.com/alphagov/govuk-design-system",
+    department: "Government Digital Service",
+    sbomPath: null,
+    dependencies: [],
   },
   {
     name: "legacy-tool",
@@ -38,6 +44,9 @@ const REPOS: Repo[] = [
     isArchived: true,
     lastPushedAt: "2020-06-01T00:00:00Z",
     url: "https://github.com/moj-analytical-services/legacy-tool",
+    department: "Ministry of Justice",
+    sbomPath: null,
+    dependencies: ["pandas"],
   },
   {
     name: "data-pipeline",
@@ -50,6 +59,9 @@ const REPOS: Repo[] = [
     isArchived: false,
     lastPushedAt: "2023-11-20T00:00:00Z",
     url: "https://github.com/moj-analytical-services/data-pipeline",
+    department: "Ministry of Justice",
+    sbomPath: null,
+    dependencies: ["pandas", "boto3"],
   },
   {
     name: "unknown-lang-repo",
@@ -62,6 +74,9 @@ const REPOS: Repo[] = [
     isArchived: false,
     lastPushedAt: "2023-01-01T00:00:00Z",
     url: "https://github.com/some-org/unknown-lang-repo",
+    department: null,
+    sbomPath: null,
+    dependencies: [],
   },
 ];
 
@@ -120,6 +135,33 @@ describe("queryRepos", () => {
     const result = queryRepos(REPOS, { name: "does-not-exist" });
     expect(result.total).toBe(0);
     expect(result.repos).toHaveLength(0);
+  });
+
+  it("filters by department (case-insensitive substring of department name)", () => {
+    const result = queryRepos(REPOS, { department: "digital service" });
+    expect(result.total).toBe(2);
+    expect(result.repos.every((r) => r.owner === "alphagov")).toBe(true);
+  });
+
+  it("filters by department using org slug", () => {
+    const result = queryRepos(REPOS, { department: "moj-analytical" });
+    expect(result.total).toBe(2);
+  });
+
+  it("filters by a single dependency", () => {
+    const result = queryRepos(REPOS, { dependencies: ["pandas"] });
+    expect(result.total).toBe(2);
+  });
+
+  it("filters by multiple dependencies (AND logic)", () => {
+    const result = queryRepos(REPOS, { dependencies: ["pandas", "boto3"] });
+    expect(result.total).toBe(1);
+    expect(result.repos[0]?.name).toBe("data-pipeline");
+  });
+
+  it("dependency match is case-insensitive", () => {
+    const result = queryRepos(REPOS, { dependencies: ["PANDAS"] });
+    expect(result.total).toBe(2);
   });
 });
 

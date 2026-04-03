@@ -18,12 +18,24 @@
     "docs:preview": "vitepress preview docs",
     "ci:check": "biome ci ."
   },
+  "bin": {
+    "xgov-query": "dist/cli.js"
+  },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@types/node": "^22.0.0",
     "esbuild": "0.24.2",
     "typescript": "5.7.3",
     "vitepress": "1.5.0",
     "vitest": "2.1.9"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.20.0",
+    "@github/copilot-sdk": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true },
+    "@github/copilot-sdk": { "optional": true }
   },
   "engines": {
     "node": ">=24"
